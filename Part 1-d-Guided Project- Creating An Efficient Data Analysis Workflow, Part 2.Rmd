@@ -1,0 +1,179 @@
+---
+title: "The Effect of A Promotion Program on Sales and Customer Review Attitude For a Book Company"
+output: html_document
+date: "2023-02-20"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(tidyverse)
+library(readr)
+library(lubridate)
+library(dplyr)
+```
+
+## Get familar with the Data
+
+It is a data frame with **5000 observations** of **5 variables**.
+
+There are five columns, date (character), user_submitted_review (character), title (character), total_purchased (integer) and customer type (character).
+
+A brief look at the data:
+
+* date                 : chr  "2019-05-22" "2019-11-16" "2019-06-27" "2019-11-06" ...
+* user_submitted_review: chr  "it was okay" "Awesome!" "Awesome!" "Awesome!" ...
+* title                : chr  "Secrets Of R For Advanced Students" "R For Dummies" "R For Dummies" "Fundamentals of R For Beginners" ...
+* total_purchased      : int  7 3 1 3 NA 1 5 NA 7 1 ...
+* customer_type        : chr  "Business" "Business" "Individual" "Individual" ...
+
+There are **two** columns that have NA values.
+
+* **User_submitted_review** column has 456 NA values
+* **Total_purchased** column has 718 NA values
+
+
+```{r importing data, echo=T, results=FALSE}
+getwd()
+library(tidyverse)
+library(readr)
+raw<-read.csv("Part 1 sales2019.csv")
+str(raw)
+table(is.na(raw$date))
+table(is.na(raw$user_submitted_review))
+table(is.na(raw$title))
+table(is.na(raw$total_purchased))
+table(is.na(raw$customer_type))
+
+```
+
+## Handling the Missing Data
+
+We're going to remove any rows that have missing data in user_submitted_review and, for the total_purchased column, replace all of the NA values with an average value that we calculate from the complete dataset.
+
+There are **4544 observations** left in the clean data frame.
+
+```{r pressure, echo=TRUE}
+fillin<-mean(raw$total_purchased, na.rm = TRUE)
+clean <- raw %>%
+  filter(!is.na(user_submitted_review)) %>%
+  mutate(new_total_purchased = if_else(is.na(total_purchased), fillin, total_purchased))
+
+#print the first few rows to check
+head(clean)
+table(is.na(clean$new_total_purchased))
+
+```
+
+
+## Processing Review Data
+I want to be able to classify reviews as either **positive, negative or neutral**.
+The comments are one of the followings:
+
+* "Awesome!"                              (positive comment)
+* "Never read a better book"              (positive comment)
+* "I learned a lot"                       (positive comment)
+
+* "it was okay"                           (neutral comment)
+* "OK"                                    (neutral comment)
+* ""                                      (neutral comment)
+
+* "Hated it"                              (negative comment)
+* "The author's other books were better"  (negative comment)
+* "A lot of material was not needed"      (negative comment)
+* "Would not recommend"                   (negative comment)
+
+
+Based on the comment, I categorized the comments in a new column called "comment_attitude".
+
+```{r echo=TRUE}
+unique(clean$user_submitted_review)
+cleanreview <- clean %>% 
+  mutate(
+    comment_attitude = case_when(
+      user_submitted_review %in% c("it was okay", "OK", "") ~ "neutral comment",
+      user_submitted_review %in% c("Awesome!", "Never read a better book", "I learned a lot") ~ "positive comment",
+      TRUE ~ "negative comment"
+    ) 
+  )
+
+head(cleanreview)
+
+```
+
+## Comparing Book Sales Between Pre- and Post-Program Sales
+
+The program started on July 1, 2019 and the data I have contains all of the sales for 2019.
+Here I will convert the date from string to a date, create a separate column, "before_after", to distinguish the sales made before and after the program, and compare the sum of sales before and after the program was implemented.
+
+
+```{r echo=TRUE}
+#conversion
+cleanreview$date<-ymd(cleanreview$date)
+str(cleanreview)
+
+#separate column
+clean_review_program<-cleanreview %>%
+  mutate(before_after = ifelse(cleanreview$date>"2019-07-01","After","Before")
+  )
+
+#sum of sales before and after
+sales_before_after<-clean_review_program %>% 
+  group_by(before_after) %>% 
+  summarize(
+    books_purchased = sum(new_total_purchased)
+  )
+sales_before_after
+```
+
+There were around **9141 purchases made before the program** and around **9051 made after the program**. Just by this number, it seems that the program even harmed the number of sales a little.
+
+I would like to divide the purchases by customer type in the next step.
+
+
+## Book Sales Within Customer Type Before and After the Program
+
+Here is the summary of numbers of books purchased before and after program by both business and individuals.
+
+```{r echo=TRUE, message=FALSE, warning=FALSE}
+clean_review_program_customer<-clean_review_program %>% 
+  group_by(before_after, customer_type) %>% 
+  summarize(
+    books_purchased = sum(new_total_purchased)
+  )
+clean_review_program_customer
+
+```
+
+```{r echo=TRUE}
+ggplot(clean_review_program_customer, aes(x=customer_type, y=books_purchased, fill=before_after)) +
+  geom_bar(stat="identity", position="dodge") +
+  scale_fill_manual(values = c("tan1", "steelblue3"))
+```
+
+
+It seems that Business and individuals reacted differently to the program. **Purchases made by business decrease slightly** (from 6300 to 6235) after the program. However, **purchases made by individuals increased** from 2751 to 2906.
+
+
+## Review Attitude Before and After the Program
+
+```{r echo=TRUE}
+review <- clean_review_program %>% 
+  group_by(before_after) %>% 
+  summarize(
+    num_positive_reviews = sum(comment_attitude == "positive comment"),
+    num_neutral_review = sum(comment_attitude == "neutral comment"),
+    num_negative_review = sum(comment_attitude == "negative comment")
+  )
+review
+```
+
+There is an influence on the customer review attitude by the program. There are **more positive reviews after the program**. However, the difference **might be negligible** until further testing.
+
+## Conclusion
+
+The goal was to find out how effective the program was. After looking at the effect that it had on the sales overall, I believe we can conclude that **it wasn’t an effective program.**
+Although there was a slight change between its effect on business customers and individual customers, without m a hypothesis test, I cannot confirm that the difference between business and individual customers' reactions is significant or the difference between the sales data before and after the program to confirm is significant.
+
+
+
+
